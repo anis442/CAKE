@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Royal Cake Craft | Admin Panel</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #fff5f7;
+      color: #30232a;
+    }
+
+    .container {
+      max-width: 850px;
+      margin: 30px auto;
+      background: white;
+      padding: 25px;
+      border-radius: 15px;
+      box-shadow: 0 5px 25px #0001;
+    }
+
+    h1, h2 { color: #a52c62; }
+
+    input, textarea, button {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 7px;
+      border: 1px solid #ddd;
+      font-size: 16px;
+    }
+
+    button {
+      background: #a52c62;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+
+    button:hover { background: #7e204a; }
+
+    .secondary { background: #444; }
+
+    .card {
+      border: 1px solid #eee;
+      padding: 15px;
+      margin: 12px 0;
+      border-radius: 10px;
+    }
+
+    .card img {
+      width: 100px;
+      height: 90px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+
+    #dashboard, #loginMessage { display: none; }
+
+    .note {
+      background: #fff0d9;
+      padding: 12px;
+      border-radius: 8px;
+      line-height: 1.5;
+    }
+  </style>
+
+</head>
+
+<body>
+  <div class="container">
+    <h1>🍰 Royal Cake Craft</h1>
+    <h2>Admin Panel Login</h2>
+
+```
+<div id="loginBox">
+  <input id="email" type="email" placeholder="Admin Email" required>
+  <input id="password" type="password" placeholder="Password" required>
+  <button onclick="login()">Login</button>
+  <p id="loginMessage"></p>
+</div>
+
+<div id="dashboard">
+  <h2>Dashboard</h2>
+  <p>Welcome to your Cake Shop Admin Panel.</p>
+  <button class="secondary" onclick="logout()">Logout</button>
+
+  <hr>
+
+  <h2>Add New Cake</h2>
+  <input id="cakeName" placeholder="Cake Name">
+  <input id="cakePrice" type="number" min="0" step="0.01" placeholder="Cake Price (₹)">
+  <input id="cakeImage" type="url" placeholder="Cake Image URL">
+  <textarea id="cakeDescription" placeholder="Cake Description"></textarea>
+  <button onclick="addCake()">Add Cake</button>
+
+  <p id="cakeMessage"></p>
+
+  <hr>
+
+  <h2>Manage Cakes</h2>
+  <div id="cakesList">Loading cakes...</div>
+
+  <hr>
+
+  <h2>Customer Orders</h2>
+  <button onclick="loadOrders()">Refresh Orders</button>
+  <div id="ordersList">Click Refresh Orders to load orders.</div>
+</div>
+```
+
+  </div>
+
+  <script>
+    // IMPORTANT: Replace these with your own Supabase project details.
+    const SUPABASE_URL = "https://kdvamcaecahocfhbjbyv.supabase.co";
+    const SUPABASE_KEY = "sb_publishable_IVaPMc_xmq5WVgFyrUx7_g_MqUih8X8";
+
+    const client = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_KEY
+    );
+
+    async function login() {
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const message = document.getElementById("loginMessage");
+
+      message.style.display = "block";
+      message.textContent = "Logging in...";
+
+      const { data, error } = await client.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        message.textContent = "Login failed: " + error.message;
+        return;
+      }
+
+      document.getElementById("loginBox").style.display = "none";
+      document.getElementById("dashboard").style.display = "block";
+
+      await loadCakes();
+      await loadOrders();
+    }
+
+    async function logout() {
+      await client.auth.signOut();
+      document.getElementById("dashboard").style.display = "none";
+      document.getElementById("loginBox").style.display = "block";
+    }
+
+    async function addCake() {
+      const name = document.getElementById("cakeName").value.trim();
+      const price = Number(document.getElementById("cakePrice").value);
+      const image_url = document.getElementById("cakeImage").value.trim();
+      const description = document.getElementById("cakeDescription").value.trim();
+      const message = document.getElementById("cakeMessage");
+
+      if (!name || document.getElementById("cakePrice").value === "" ||
+          !Number.isFinite(price) || price < 0) {
+        message.textContent = "Enter a cake name and a valid price.";
+        return;
+      }
+
+      const { error } = await client.from("cakes").insert([{
+        name, price, image_url, description
+      }]);
+
+      if (error) {
+        message.textContent = "Could not add cake: " + error.message;
+        return;
+      }
+
+      message.textContent = "Cake added successfully!";
+      document.getElementById("cakeName").value = "";
+      document.getElementById("cakePrice").value = "";
+      document.getElementById("cakeImage").value = "";
+      document.getElementById("cakeDescription").value = "";
+
+      await loadCakes();
+    }
+
+    async function loadCakes() {
+      const list = document.getElementById("cakesList");
+      list.textContent = "Loading...";
+
+      const { data, error } = await client
+        .from("cakes")
+        .select("*")
+        .order("id", { ascending: false });
+
+      if (error) {
+        list.textContent = "Could not load cakes: " + error.message;
+        return;
+      }
+
+      list.replaceChildren();
+
+      if (!data.length) {
+        list.textContent = "No cakes added yet.";
+        return;
+      }
+
+      data.forEach(cake => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const title = document.createElement("h3");
+        title.textContent = cake.name;
+
+        const price = document.createElement("p");
+        price.textContent = "Price: ₹" + cake.price;
+
+        card.append(title, price);
+
+        if (cake.image_url) {
+          const img = document.createElement("img");
+          img.src = cake.image_url;
+          img.alt = cake.name;
+          card.prepend(img);
+        }
+
+        const deleteButton = document.createElement("button");
+        deleteButton.textContent = "Delete Cake";
+        deleteButton.onclick = () => deleteCake(cake.id);
+
+        card.append(deleteButton);
+        list.append(card);
+      });
+    }
+
+    async function deleteCake(id) {
+      if (!confirm("Are you sure you want to delete this cake?")) return;
+
+      const { error } = await client.from("cakes").delete().eq("id", id);
+
+      if (error) {
+        alert("Delete failed: " + error.message);
+        return;
+      }
+
+      await loadCakes();
+    }
+
+    async function loadOrders() {
+      const list = document.getElementById("ordersList");
+      list.textContent = "Loading orders...";
+
+      const { data, error } = await client
+        .from("cake_orders")
+        .select("id, customer_name, phone, delivery_address, cake_name, quantity, total_price, status, created_at")
+        .order("id", { ascending: false });
+
+      if (error) {
+        list.textContent = "Could not load orders: " + error.message;
+        return;
+      }
+
+      list.replaceChildren();
+
+      if (!data.length) {
+        list.textContent = "No orders found.";
+        return;
+      }
+
+      data.forEach(order => {
+        const card = document.createElement("div");
+        card.className = "card";
+
+        const details = document.createElement("p");
+        details.textContent =
+          "Order #" + order.id +
+          " | Customer: " + order.customer_name +
+          " | Phone: " + order.phone +
+          " | Cake: " + (order.cake_name || "Not specified") +
+          " | Quantity: " + (order.quantity || 1) +
+          " | Total: ₹" + (order.total_price || 0) +
+          " | Status: " + (order.status || "Pending");
+
+        card.append(details);
+        list.append(card);
+      });
+    }
+  </script>
+
+</body>
+</html>
